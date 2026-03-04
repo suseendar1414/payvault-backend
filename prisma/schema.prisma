@@ -1,0 +1,60 @@
+// This is your Prisma schema file.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id               String   @id @default(uuid())
+  xeroTenantId     String   @unique
+  name             String?
+  accessToken      String?
+  refreshToken     String?
+  expiresAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  employees        Employee[]
+}
+
+model Employee {
+  id               String   @id @default(uuid())
+  tenantId         String
+  xeroEmployeeId   String
+  name             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ledgers          Ledger[]
+  documents        Document[]
+
+  @@unique([tenantId, xeroEmployeeId])
+}
+
+model Ledger {
+  id                String   @id @default(uuid())
+  employeeId        String
+  totalDebt         Float
+  monthlyDeduction  Float
+  protectedEarnings Float
+  remainingBalance  Float
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  employee          Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model Document {
+  id                String   @id @default(uuid())
+  employeeId        String
+  s3Key             String
+  filename          String
+  documentType      String   @default("OTHER")
+  uploadedAt        DateTime @default(now())
+
+  employee          Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
