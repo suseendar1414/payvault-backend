@@ -53,8 +53,9 @@ model Document {
   employeeId        String
   s3Key             String
   filename          String
-  documentType      String   @default("OTHER")
-  uploadedAt        DateTime @default(now())
+  documentType         String   @default("OTHER")
+  encryptedKeyMaterial String?
+  uploadedAt           DateTime @default(now())
 
   employee          Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }

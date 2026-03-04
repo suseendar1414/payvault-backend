@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import path from 'path';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { encryptKeyMaterial, decryptKeyMaterial } from '../../../lib/keyEncryption';
 
 const s3 = new S3Client({
     region: process.env.AWS_REGION!,
@@ -47,7 +48,7 @@ export async function GET(request: NextRequest) {
         const employeeId = searchParams.get('employeeId');
         const documentId = searchParams.get('documentId');
 
-        // Return a presigned GET URL for a single document (used for download)
+        // Return presigned GET URL + decrypted key material for download
         if (documentId) {
             const doc = await prisma.document.findUnique({
                 where: { id: documentId },
@@ -59,9 +60,12 @@ export async function GET(request: NextRequest) {
             const downloadUrl = await getSignedUrl(
                 s3,
                 new GetObjectCommand({ Bucket: BUCKET, Key: doc.s3Key }),
-                { expiresIn: 300 } // 5 minutes
+                { expiresIn: 300 }
             );
-            return NextResponse.json({ downloadUrl });
+            const keyMaterial = doc.encryptedKeyMaterial
+                ? decryptKeyMaterial(doc.encryptedKeyMaterial)
+                : null;
+            return NextResponse.json({ downloadUrl, keyMaterial });
         }
 
         // Return list of documents for an employee
@@ -70,12 +74,7 @@ export async function GET(request: NextRequest) {
         }
 
         const employee = await prisma.employee.upsert({
-            where: {
-                tenantId_xeroEmployeeId: {
-                    tenantId: session.tenantId,
-                    xeroEmployeeId: employeeId
-                }
-            },
+            where: { tenantId_xeroEmployeeId: { tenantId: session.tenantId, xeroEmployeeId: employeeId } },
             update: {},
             create: { tenantId: session.tenantId, xeroEmployeeId: employeeId }
         });
@@ -99,7 +98,7 @@ export async function POST(request: NextRequest) {
 
     try {
         const body = await request.json();
-        const { employeeId } = body;
+        const { employeeId, keyJWK, iv } = body;
         const filename = sanitizeFilename(body.filename);
         const documentType = typeof body.documentType === 'string' && ALLOWED_DOCUMENT_TYPES.has(body.documentType)
             ? body.documentType
@@ -113,12 +112,7 @@ export async function POST(request: NextRequest) {
         }
 
         const employee = await prisma.employee.upsert({
-            where: {
-                tenantId_xeroEmployeeId: {
-                    tenantId: session.tenantId,
-                    xeroEmployeeId: employeeId
-                }
-            },
+            where: { tenantId_xeroEmployeeId: { tenantId: session.tenantId, xeroEmployeeId: employeeId } },
             update: {},
             create: { tenantId: session.tenantId, xeroEmployeeId: employeeId }
         });
@@ -127,16 +121,15 @@ export async function POST(request: NextRequest) {
 
         const uploadUrl = await getSignedUrl(
             s3,
-            new PutObjectCommand({
-                Bucket: BUCKET,
-                Key: s3Key,
-                ContentType: 'application/octet-stream',
-            }),
-            { expiresIn: 300 } // 5 minutes
+            new PutObjectCommand({ Bucket: BUCKET, Key: s3Key, ContentType: 'application/octet-stream' }),
+            { expiresIn: 300 }
         );
 
+        // Encrypt and store key material server-side if provided
+        const encryptedKeyMaterial = (keyJWK && iv) ? encryptKeyMaterial(keyJWK, iv) : null;
+
         const doc = await prisma.document.create({
-            data: { employeeId: employee.id, filename, s3Key, documentType }
+            data: { employeeId: employee.id, filename, s3Key, documentType, encryptedKeyMaterial }
         });
 
         return NextResponse.json({ uploadUrl, document: doc });
@@ -166,7 +159,6 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: 'Document not found' }, { status: 404 });
         }
 
-        // Delete from S3 first, then DB
         await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: doc.s3Key }));
         await prisma.document.delete({ where: { id: documentId } });
 
