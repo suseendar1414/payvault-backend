@@ -85,14 +85,7 @@ export async function GET(request: NextRequest) {
             { expiresIn: '30d' }
         );
 
-        const response = NextResponse.redirect(`${DASHBOARD_URL}/dashboard`);
-        response.cookies.set('payvault_token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 60 * 60 * 24 * 30, // 30 days
-            path: '/',
-        });
+        const response = NextResponse.redirect(`${DASHBOARD_URL}/auth/callback?token=${encodeURIComponent(token)}`);
         response.cookies.set('oauth_state_web', '', { maxAge: 0, path: '/' });
 
         return response;
