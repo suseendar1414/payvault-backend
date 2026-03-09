@@ -9,11 +9,16 @@ export interface PayVaultSession {
 
 export async function verifySession(request: NextRequest): Promise<PayVaultSession | null> {
     const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return null;
+    const cookieToken = request.cookies.get('payvault_token')?.value;
+
+    let token: string | null = null;
+    if (authHeader?.startsWith('Bearer ')) {
+        token = authHeader.split(' ')[1];
+    } else if (cookieToken) {
+        token = cookieToken;
     }
 
-    const token = authHeader.split(' ')[1];
+    if (!token) return null;
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) throw new Error('JWT_SECRET environment variable is not set');
 

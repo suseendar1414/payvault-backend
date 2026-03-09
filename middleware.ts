@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const ALLOWED_ORIGINS = [
     'https://payroll.xero.com',
+    'https://payvaultdocs.co.uk',
     'http://localhost:3000',
+    'http://localhost:3001',
 ];
 
 export function middleware(request: NextRequest) {
