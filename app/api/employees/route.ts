@@ -16,6 +16,10 @@ export async function GET(request: NextRequest) {
                 documents: {
                     select: { documentType: true },
                 },
+                ledgers: {
+                    select: { totalDebt: true, remainingBalance: true, monthlyDeduction: true, protectedEarnings: true },
+                    take: 1,
+                },
             },
             orderBy: { createdAt: 'asc' },
         });
@@ -26,6 +30,7 @@ export async function GET(request: NextRequest) {
             name: emp.name,
             documentCount: emp._count.documents,
             documentTypes: emp.documents.map(d => d.documentType),
+            ledger: emp.ledgers[0] ?? null,
         }));
 
         return NextResponse.json({ employees: result });
